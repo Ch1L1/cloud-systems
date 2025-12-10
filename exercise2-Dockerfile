@@ -1,0 +1,46 @@
+# Stage 1: Build Hugo from source with modifications
+FROM golang:1.23-alpine AS builder
+
+# Install required dependencies
+RUN apk add --no-cache git
+
+# Set working directory for Hugo source
+WORKDIR /src
+
+# Clone Hugo repository (stable version)
+RUN git clone --depth 1 --branch v0.136.5 https://github.com/gohugoio/hugo.git /src
+
+# Build Hugo binary
+RUN go build -o /go/bin/hugo
+
+# Set up a new Hugo site
+WORKDIR /site
+RUN /go/bin/hugo new site . --force && \
+    mkdir -p layouts/page layouts/section layouts/_default static/css && \
+    echo '<!DOCTYPE html><html><head><title>{{ .Title }}</title></head><body><h1>{{ .Title }}</h1>{{ .Content }}</body></html>' > layouts/page/single.html && \
+    cp layouts/page/single.html layouts/section/list.html && \
+    cp layouts/page/single.html layouts/_default/baseof.html && \
+    echo 'body { font-family: Arial, sans-serif; background-color: #f4f4f4; }' > static/css/style.css && \
+    mkdir -p content/about content/contact && \
+    echo -e '---\ntitle: "About Me"\n---\n\nTomas Homola, UCO: 567740' > content/about/index.md && \
+    echo -e '---\ntitle: "Contact"\n---\n\nReach out via email.' > content/contact/index.md && \
+    echo -e 'baseURL = "http://example.com"\nlanguageCode = "en-us"\ntitle = "Unique Hugo Site"' > config.toml && \
+    /go/bin/hugo --minify
+
+# Stage 2: Serve with Nginx
+FROM nginxinc/nginx-unprivileged:1.25-alpine
+
+# Set working directory
+WORKDIR /usr/share/nginx/html
+
+# Copy Hugo output
+COPY --chown=nginx:nginx --from=builder /site/public /usr/share/nginx/html
+
+EXPOSE 8080
+
+LABEL org.opencontainers.image.title="PA234 - Homework2"
+LABEL org.opencontainers.image.description="Hugo static site for PA234 homework 2"
+LABEL org.opencontainers.image.authors="Tomas Homola <567740@mail.muni.cz>"
+LABEL org.opencontainers.image.version="1.0"
+
+CMD ["nginx", "-g", "daemon off;"]
